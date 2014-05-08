@@ -278,43 +278,43 @@ describe('model: findOneAndUpdate:', function(){
     query = M.findOneAndUpdate({ author: 'aaron' }, { $set: { date: now }}, { new: false, fields: 'author' });
     assert.strictEqual(false, query.options.new);
     assert.strictEqual(1, query._fields.author);
-    assert.equal(now, query._updateArg.$set.date);
+    assert.equal(now.toString(), query._update.$set.date.toString());
     assert.strictEqual('aaron', query._conditions.author);
 
     query = M.findOneAndUpdate({ author: 'aaron' }, { $set: { date: now }});
     assert.strictEqual(undefined, query.options.new);
-    assert.equal(now, query._updateArg.$set.date);
+    assert.equal(now.toString(), query._update.$set.date.toString());
     assert.strictEqual('aaron', query._conditions.author);
 
     query = M.findOneAndUpdate({ $set: { date: now }});
     assert.strictEqual(undefined, query.options.new);
-    assert.equal(now, query._updateArg.$set.date);
+    assert.equal(now.toString(), query._update.$set.date.toString());
     assert.strictEqual(undefined, query._conditions.author);
 
     query = M.findOneAndUpdate();
     assert.strictEqual(undefined, query.options.new);
-    assert.equal(undefined, query._updateArg.date);
+    assert.equal(undefined, query._update);
     assert.strictEqual(undefined, query._conditions.author);
 
     // Query.findOneAndUpdate
     query = M.where('author', 'aaron').findOneAndUpdate({ date: now });
     assert.strictEqual(undefined, query.options.new);
-    assert.equal(now, query._updateArg.date);
+    assert.equal(now.toString(), query._update.date.toString());
     assert.strictEqual('aaron', query._conditions.author);
 
     query = M.find().findOneAndUpdate({ author: 'aaron' }, { date: now });
     assert.strictEqual(undefined, query.options.new);
-    assert.equal(now, query._updateArg.date);
+    assert.equal(now.toString(), query._update.date.toString());
     assert.strictEqual('aaron', query._conditions.author);
 
     query = M.find().findOneAndUpdate({ date: now });
     assert.strictEqual(undefined, query.options.new);
-    assert.equal(now, query._updateArg.date);
+    assert.equal(now.toString(), query._update.date.toString());
     assert.strictEqual(undefined, query._conditions.author);
 
     query = M.find().findOneAndUpdate();
     assert.strictEqual(undefined, query.options.new);
-    assert.equal(undefined, query._updateArg.date);
+    assert.equal(undefined, query._update);
     assert.strictEqual(undefined, query._conditions.author);
     done();
   })
@@ -599,12 +599,12 @@ describe('model: findByIdAndUpdate:', function(){
     query = M.findByIdAndUpdate(_id, { $set: { date: now }}, { new: false, fields: 'author' });
     assert.strictEqual(false, query.options.new);
     assert.strictEqual(1, query._fields.author);
-    assert.equal(now, query._updateArg.$set.date);
+    assert.equal(now.toString(), query._update.$set.date.toString());
     assert.strictEqual(_id.toString(), query._conditions._id.toString());
 
     query = M.findByIdAndUpdate(_id, { $set: { date: now }});
     assert.strictEqual(undefined, query.options.new);
-    assert.equal(now, query._updateArg.$set.date);
+    assert.equal(now.toString(), query._update.$set.date.toString());
     assert.strictEqual(_id.toString(), query._conditions._id.toString());
 
     query = M.findByIdAndUpdate(_id);
@@ -613,7 +613,7 @@ describe('model: findByIdAndUpdate:', function(){
 
     query = M.findByIdAndUpdate();
     assert.strictEqual(undefined, query.options.new);
-    assert.equal(undefined, query._updateArg.date);
+    assert.equal(undefined, query._update);
     assert.strictEqual(undefined, query._conditions._id);
     done();
   });
@@ -661,27 +661,38 @@ describe('model: findByIdAndUpdate:', function(){
   it('supports v3 sort string syntax', function(done){
     var db = start()
       , M = db.model(modelname, collection)
-      , _id = new DocumentObjectId
 
-    db.close();
-
-    var now = new Date
-      , query;
+    var now = new Date;
+    var _id = new DocumentObjectId;
+    var query;
 
     query = M.findByIdAndUpdate(_id, { $set: { date: now }}, { sort: 'author -title' });
-    assert.equal(2, query.options.sort.length);
-    assert.equal('author', query.options.sort[0][0]);
-    assert.equal(1, query.options.sort[0][1]);
-    assert.equal('title', query.options.sort[1][0]);
-    assert.equal(-1, query.options.sort[1][1]);
+    assert.equal(2, Object.keys(query.options.sort).length);
+    assert.equal(1, query.options.sort.author);
+    assert.equal(-1, query.options.sort.title);
 
     query = M.findOneAndUpdate({}, { $set: { date: now }}, { sort: 'author -title' });
-    assert.equal(2, query.options.sort.length);
-    assert.equal('author', query.options.sort[0][0]);
-    assert.equal(1, query.options.sort[0][1]);
-    assert.equal('title', query.options.sort[1][0]);
-    assert.equal(-1, query.options.sort[1][1]);
-    done();
+    assert.equal(2, Object.keys(query.options.sort).length);
+    assert.equal(1, query.options.sort.author);
+    assert.equal(-1, query.options.sort.title);
+
+    // gh-1887
+    M.create(
+        { title: 1, meta: {visitors: 0}}
+      , { title: 2, meta: {visitors: 10}}
+      , { title: 3, meta: {visitors: 5}}
+      , function (err, a,b,c) {
+      if (err) return done(err);
+
+      M.findOneAndUpdate({}, { title: 'changed' })
+      .sort({ 'meta.visitors': -1 })
+      .exec(function(err, doc) {
+        if (err) return done(err);
+        db.close();
+        assert.equal(10, doc.meta.visitors);
+        done();
+      });
+    });
   })
 
   it('supports v3 sort object syntax', function(done){
@@ -695,18 +706,15 @@ describe('model: findByIdAndUpdate:', function(){
       , query;
 
     query = M.findByIdAndUpdate(_id, { $set: { date: now }}, { sort: { author: 1, title: -1 }});
-    assert.equal(2, query.options.sort.length);
-    assert.equal('author', query.options.sort[0][0]);
-    assert.equal(1, query.options.sort[0][1]);
-    assert.equal('title', query.options.sort[1][0]);
-    assert.equal(-1, query.options.sort[1][1]);
+    assert.equal(2, Object.keys(query.options.sort).length);
+    assert.equal(1, query.options.sort.author);
+    assert.equal(-1, query.options.sort.title);
 
     query = M.findOneAndUpdate(_id, { $set: { date: now }}, { sort: { author: 1, title: -1 }});
-    assert.equal(2, query.options.sort.length);
-    assert.equal('author', query.options.sort[0][0]);
-    assert.equal(1, query.options.sort[0][1]);
-    assert.equal('title', query.options.sort[1][0]);
-    assert.equal(-1, query.options.sort[1][1]);
+    assert.equal(2, Object.keys(query.options.sort).length);
+    assert.equal(1, query.options.sort.author);
+    assert.equal(-1, query.options.sort.title);
+
     done();
   });
 
@@ -762,4 +770,64 @@ describe('model: findByIdAndUpdate:', function(){
       })
     })
   })
+  it('returns null when doing an upsert & new=false gh-1533', function (done) {
+    var db = start();
+
+    var thingSchema = new Schema({
+        _id: String,
+        flag: {
+            type: Boolean,
+            "default": false
+        }
+    });
+
+    var Thing = db.model('Thing', thingSchema);
+    var key = 'some-id';
+
+    Thing.findOneAndUpdate({_id: key}, {$set: {flag: false}}, {upsert: true, "new": false}).exec(function(err, thing) {
+        assert.ifError(err);
+        assert.equal(null, thing);
+        Thing.findOneAndUpdate({_id: key}, {$set: {flag: false}}, {upsert: true, "new": false}).exec(function (err, thing2) {
+          assert.ifError(err);
+          assert.equal(key, thing2.id);
+          assert.equal(false, thing2.flag);
+          done();
+        });
+    });
+  });
+
+  it('allows properties to be set to null gh-1643', function (done) {
+    var db = start();
+
+    var thingSchema = new Schema({
+      name:[String]
+    });
+
+    var Thing = db.model('Thing', thingSchema);
+
+    Thing.create({name:["Test"]}, function (err, thing) {
+      if (err) return done(err);
+      Thing.findOneAndUpdate({ _id: thing._id }, {name:null})
+        .exec(function (err, doc) {
+          if (err) return done(err);
+          assert.ok(doc);
+          assert.equal(doc.name, null);
+          done();
+      });
+    });
+  });
+
+  it('honors the overwrite option (gh-1809)', function(done) {
+    var db = start();
+    var M = db.model('1809', { name: String, change: Boolean });
+    M.create({ name: 'first' }, function(err, doc) {
+      if (err) return done(err);
+      M.findByIdAndUpdate(doc._id, { change: true }, { overwrite: true }, function(err, doc) {
+        if (err) return done(err);
+        assert.ok(doc.change);
+        assert.equal(undefined, doc.name);
+        done();
+      });
+    });
+  });
 })
